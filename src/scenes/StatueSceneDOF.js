@@ -13,7 +13,7 @@ import statue from '../../assets/models/statue.json'
 import { mat4, vec3, vec2 } from '../utils/gl-matrix.js';
 
 
-export default class StatueSceneLayers {
+export default class StatueSceneDOF {
 
     constructor() {
 
@@ -63,6 +63,7 @@ export default class StatueSceneLayers {
 
         this.sceneTexture;
         this.depthTexture;
+        this.blurTexture;
         this.sceneFBO;
         this.gBuffer;
         this.positionTexture;
@@ -71,6 +72,7 @@ export default class StatueSceneLayers {
 
         this.sceneTextureLocation;
         this.depthTextureLocation;
+        this.blurTextureLocation;
         this.positionTextureLocation;
         this.normalTextureLocation;
         this.uvTextureLocation;
@@ -78,7 +80,7 @@ export default class StatueSceneLayers {
 
         document.body.appendChild( this.stats.domElement );
 
-        const obj = { tiling: 10.0, range: [ 1.0, 10.0 ] };
+        const obj = { amount: 0 };
 
         this.cubeRotation = {
 
@@ -99,13 +101,13 @@ export default class StatueSceneLayers {
             this.controlKit.addPanel()
                 .addGroup()
                     .addSubGroup()
-                        .addSlider( obj, 'tiling', 'range', {
-                            onChange: ( index ) => {
+                        // .addSlider( obj, 'amount', {
+                        //     onChange: ( index ) => {
                                 
-                                console.log( obj.tiling )
+                        //         console.log( obj.amount )
 
-                            }
-                        } );  
+                        //     }
+                        // } );  
         
                 
                     
@@ -203,6 +205,7 @@ export default class StatueSceneLayers {
         
         this.sceneTextureLocation       = gl.getUniformLocation( this.compositeProgram, "uSceneColor" );
         this.depthTextureLocation       = gl.getUniformLocation( this.compositeProgram, "uDepthColor" );
+        this.blurTextureLocation        = gl.getUniformLocation( this.compositeProgram, "uBlurredTexture" );
         this.positionTextureLocation    = gl.getUniformLocation( this.compositeProgram, "uPositionTexture" );
         this.normalTextureLocation      = gl.getUniformLocation( this.compositeProgram, "uNormalTexture" );
         this.uvTextureLocation          = gl.getUniformLocation( this.compositeProgram, "uUvTexture" );
@@ -223,6 +226,22 @@ export default class StatueSceneLayers {
         this.sceneFBO = gl.createFramebuffer();
         gl.bindFramebuffer( gl.FRAMEBUFFER, this.sceneFBO );
         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.sceneTexture, 0 );
+
+        // Box blur for DOF
+
+    
+        this.blurTexture = gl.createTexture();
+        gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, gl.drawingBufferWidth, gl.drawingBufferHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR );
+        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR );
+        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
+
+        this.blurFBO = gl.createFramebuffer();
+        gl.bindFramebuffer( gl.FRAMEBUFFER, this.blurFBO );
+        gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.blurTexture, 0 );
+
+        gl.bindFramebuffer( gl.FRAMEBUFFER, null );
         
 
 
@@ -271,7 +290,6 @@ export default class StatueSceneLayers {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );        
-
         
         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTexture, 0 );
 
@@ -381,6 +399,8 @@ export default class StatueSceneLayers {
         gl.bindTexture( gl.TEXTURE_2D, this.normalTexture );
         gl.activeTexture( gl.TEXTURE4 );
         gl.bindTexture( gl.TEXTURE_2D, this.uvTexture );
+        gl.activeTexture( gl.TEXTURE5 );
+        gl.bindTexture( gl.TEXTURE_2D, this.blurTexture );
 
         gl.useProgram( this.compositeProgram );
         gl.uniform2f( this.resolutionLocation, gl.drawingBufferWidth, gl.drawingBufferHeight );
@@ -416,7 +436,6 @@ export default class StatueSceneLayers {
             this.then = this.now - ( this.elapsed % this.fpsInterval );
 
             {
-
                
 
                 gl.bindFramebuffer( gl.FRAMEBUFFER, this.gBuffer );
@@ -441,6 +460,13 @@ export default class StatueSceneLayers {
                 gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
                 gl.drawArrays( gl.TRIANGLES, 0, this.numVertices );
+
+            }
+
+            // Draw blur pass
+
+            {
+
 
             }
 

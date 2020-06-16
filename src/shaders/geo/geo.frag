@@ -14,15 +14,14 @@ uniform SceneUniforms {
 
 uniform sampler2D tex;
 
-in vec3 vPosition;
+in vec4 vPosition;
 in vec4 vUv;
 in vec3 vNormal;
 
 layout(location=0) out vec4 fragPosition;
 layout(location=1) out vec4 fragNormal;
 layout(location=2) out vec4 fragUV; 
-
-//out vec4 fragColor;
+layout(location=3) out vec4 difuse;
 
 void main() {
 
@@ -35,10 +34,8 @@ void main() {
     // float spec          = pow( max( dot( eyeVec, reflect( incidentVec, normal ) ), 0.0 ), 100.0 );
     // float ambient       = 0.1;
 
-    fragPosition        = vec4( vPosition, 1.0 );
-    fragNormal          = vec4( normalize( vNormal.xyz ), 0.0 );
+    fragPosition        = vPosition;
+    fragNormal          = vec4( normalize( vNormal.xyz ), 1.0 );
     fragUV              = vUv;
-
-    //fragColor           = vec4( color * ( diffuse + spec + ambient ), 1.0 );
 
 }

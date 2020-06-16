@@ -1,3 +1,3 @@
-import StatueSceneLayers from './scenes/StatueSceneLayers';
+import StatueSceneDOF from './scenes/StatueSceneDOF';
 
-const scene = new StatueSceneLayers();
+const scene = new StatueSceneDOF();

@@ -16,18 +16,18 @@ uniform SceneUniforms {
 
 uniform mat4 uModel;
 
-out vec3 vPosition;
+out vec4 vPosition;
 out vec4 vUv;
 out vec3 vNormal;
 
 void main() {
 
     vec4 pos            = position;
-    //pos.xyz *= 0.1;
+    pos.xyz *= 0.5;
     
     vec4 worldPosition  = uModel * pos; 
 
-    vPosition           = worldPosition.xyz;
+    vPosition           = worldPosition;
     vUv                 = uv;
     vNormal             = ( uModel * normal ).xyz;
 

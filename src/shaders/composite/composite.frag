@@ -9,6 +9,7 @@ uniform vec2     uResolution;
 uniform sampler2D uPositionTexture;
 uniform sampler2D uNormalTexture;
 uniform sampler2D uUvTexture;
+uniform sampler2D uBlurredTexture;
 
 out vec4 fragColor;
 
@@ -22,6 +23,6 @@ void main() {
 
     float depth     = ( length( position ) - 0.01) / (100. - 0.01);
 
-  	fragColor       = vec4( position, 1.0 );
+  	fragColor       = vec4( normal, 1.0 );
 
 }
