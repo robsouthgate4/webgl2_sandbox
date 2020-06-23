@@ -23,7 +23,7 @@ out vec3 vNormal;
 void main() {
 
     vec4 pos            = position;
-    pos.xyz *= 0.1;
+    pos.xyz *= 0.6;
     
     vec4 worldPosition  = uModel * pos; 
 
