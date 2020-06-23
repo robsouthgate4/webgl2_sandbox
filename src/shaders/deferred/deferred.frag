@@ -27,6 +27,6 @@ void main() {
 
     float depth     = ( length( position ) - 0.01) / (100. - 0.01);
 
-  	fragColor       = vec4( position, 1.0 );
+  	fragColor       = vec4( diffuse, 1.0 );
 
 }

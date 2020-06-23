@@ -1,14 +1,14 @@
 
 import Stats from 'Stats.js';
 import Geo from '../shaders/geo/geo.js'
-import Composite from '../shaders/composite/composite.js'
+import DEFERRED from '../shaders/deferred/deferred.js'
+import BOXBLUR  from '../shaders/blur/boxBlur.js'
+import DOF      from '../shaders/dof/dof.js'
 import ControlKit from 'controlkit';
 
 import '../utils/utils'
 
-import statue from '../../assets/models/statue.json'
-
-//let statue = utils.createSphere( {radius: 2.0 } );
+import character from '../../assets/models/ironman.json'
 
 import { mat4, vec3, vec2 } from '../utils/gl-matrix.js';
 
@@ -30,6 +30,7 @@ export default class StatueSceneDOF {
 
 
         }
+
         gl.viewport( 0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
         gl.clearColor( 0, 0, 0, 1 );
 
@@ -50,7 +51,8 @@ export default class StatueSceneDOF {
         this.startTime = this.then;
 
         this.geoProgram;
-        this.compositeProgram;
+        this.deferredProgram;
+        this.boxBlurProgram;
 
         this.statueArray;
         this.quadArray;
@@ -64,6 +66,7 @@ export default class StatueSceneDOF {
         this.sceneTexture;
         this.depthTexture;
         this.blurTexture;
+        this.diffuseTexture;
         this.sceneFBO;
         this.gBuffer;
         this.positionTexture;
@@ -77,12 +80,13 @@ export default class StatueSceneDOF {
         this.normalTextureLocation;
         this.uvTextureLocation;
         this.resolutionLocation;
+        this.dofPositionTextureLocation;
 
         document.body.appendChild( this.stats.domElement );
 
         const obj = { amount: 0 };
 
-        this.cubeRotation = {
+        this.rotation = {
 
             angleX: 0,
             angleY: 0
@@ -154,41 +158,114 @@ export default class StatueSceneDOF {
             console.error( gl.getProgramInfoLog( this.geoProgram ) );
 
         }
-        
-        // --------------------------- Setup Composition program --------------------------- //
 
+        // --------------------------- Setup blur program --------------------------------- //
 
-        const compositeVsSource       = Composite.vertexShader;
-        const compositeFsSource       = Composite.fragmentShader;
+        const boxBlurVsSource       = BOXBLUR.vertexShader;
+        const boxBlurFsSource       = BOXBLUR.fragmentShader;
 
-        const compositeVertexShader       = gl.createShader( gl.VERTEX_SHADER );
-        gl.shaderSource( compositeVertexShader, compositeVsSource );
-        gl.compileShader( compositeVertexShader );
+        const boxBlurVertexShader       = gl.createShader( gl.VERTEX_SHADER );
+        gl.shaderSource( boxBlurVertexShader, boxBlurVsSource );
+        gl.compileShader( boxBlurVertexShader );
 
-        if ( ! gl.getShaderParameter( compositeVertexShader, gl.COMPILE_STATUS ) ) {
+        if ( ! gl.getShaderParameter( boxBlurVertexShader, gl.COMPILE_STATUS ) ) {
             
-            console.error( gl.getShaderInfoLog( compositeVertexShader ) );
+            console.error( gl.getShaderInfoLog( boxBlurVertexShader ) );
 
         }
 
-        const compositeFragmentShader = gl.createShader( gl.FRAGMENT_SHADER );
-        gl.shaderSource( compositeFragmentShader, compositeFsSource );
-        gl.compileShader( compositeFragmentShader );
+        const boxBlurFragmentShader = gl.createShader( gl.FRAGMENT_SHADER );
+        gl.shaderSource( boxBlurFragmentShader, boxBlurFsSource );
+        gl.compileShader( boxBlurFragmentShader );
 
-        if ( ! gl.getShaderParameter( compositeFragmentShader, gl.COMPILE_STATUS ) ) {
+        if ( ! gl.getShaderParameter( boxBlurFragmentShader, gl.COMPILE_STATUS ) ) {
             
-            console.error( gl.getShaderInfoLog( compositeFragmentShader ) );
+            console.error( gl.getShaderInfoLog( boxBlurFragmentShader ) );
 
         }
 
-        this.compositeProgram = gl.createProgram();
-        gl.attachShader( this.compositeProgram, compositeVertexShader );
-        gl.attachShader( this.compositeProgram, compositeFragmentShader );
-        gl.linkProgram( this.compositeProgram );
+        this.boxBlurProgram = gl.createProgram();
+        gl.attachShader( this.boxBlurProgram, boxBlurVertexShader );
+        gl.attachShader( this.boxBlurProgram, boxBlurFragmentShader );
+        gl.linkProgram( this.boxBlurProgram );
 
-        if ( ! gl.getProgramParameter( this.compositeProgram, gl.LINK_STATUS ) ) {
+        if ( ! gl.getProgramParameter( this.boxBlurProgram, gl.LINK_STATUS ) ) {
 
-            console.error( gl.getProgramInfoLog( this.compositeProgram ) );
+            console.error( gl.getProgramInfoLog( this.boxBlurProgram ) );
+
+        }
+
+        // --------------------------- Setup DOF program --------------------------- //
+
+
+        const dofVsSource       = DOF.vertexShader;
+        const dofFsSource       = DOF.fragmentShader;
+
+        const dofVertexShader       = gl.createShader( gl.VERTEX_SHADER );
+        gl.shaderSource( dofVertexShader, dofVsSource );
+        gl.compileShader( dofVertexShader );
+
+        if ( ! gl.getShaderParameter( dofVertexShader, gl.COMPILE_STATUS ) ) {
+            
+            console.error( gl.getShaderInfoLog( dofVertexShader ) );
+
+        }
+
+        const dofFragmentShader = gl.createShader( gl.FRAGMENT_SHADER );
+        gl.shaderSource( dofFragmentShader, dofFsSource );
+        gl.compileShader( dofFragmentShader );
+
+        if ( ! gl.getShaderParameter( dofFragmentShader, gl.COMPILE_STATUS ) ) {
+            
+            console.error( gl.getShaderInfoLog( dofFragmentShader ) );
+
+        }
+
+        this.dofProgram = gl.createProgram();
+        gl.attachShader( this.dofProgram, dofVertexShader );
+        gl.attachShader( this.dofProgram, dofFragmentShader );
+        gl.linkProgram( this.dofProgram );
+
+        if ( ! gl.getProgramParameter( this.dofProgram, gl.LINK_STATUS ) ) {
+
+            console.error( gl.getProgramInfoLog( this.dofProgram ) );
+
+        }
+
+        // --------------------------- Setup Deferred program --------------------------- //
+
+
+        const deferredVsSource       = DEFERRED.vertexShader;
+        const deferredFsSource       = DEFERRED.fragmentShader;
+
+        const deferredVertexShader       = gl.createShader( gl.VERTEX_SHADER );
+        gl.shaderSource( deferredVertexShader, deferredVsSource );
+        gl.compileShader( deferredVertexShader );
+
+        if ( ! gl.getShaderParameter( deferredVertexShader, gl.COMPILE_STATUS ) ) {
+            
+            console.error( gl.getShaderInfoLog( deferredVertexShader ) );
+
+        }
+
+        const deferredFragmentShader = gl.createShader( gl.FRAGMENT_SHADER );
+        gl.shaderSource( deferredFragmentShader, deferredFsSource );
+        gl.compileShader( deferredFragmentShader );
+
+        if ( ! gl.getShaderParameter( deferredFragmentShader, gl.COMPILE_STATUS ) ) {
+            
+            console.error( gl.getShaderInfoLog( deferredFragmentShader ) );
+
+        }
+
+        this.deferredProgram = gl.createProgram();
+        gl.attachShader( this.deferredProgram, deferredVertexShader );
+        gl.attachShader( this.deferredProgram, deferredFragmentShader );
+        gl.linkProgram( this.deferredProgram );
+
+        if ( ! gl.getProgramParameter( this.deferredProgram, gl.LINK_STATUS ) ) {
+
+            console.error( gl.getProgramInfoLog( this.deferredProgram ) );
 
         }
 
@@ -199,17 +276,21 @@ export default class StatueSceneDOF {
         gl.uniformBlockBinding( this.geoProgram, sceneUniformsLocations, 0 );
 
         this.modelMatrixLocation    = gl.getUniformLocation( this.geoProgram, "uModel" );
-        const texLocation           = gl.getUniformLocation( this.geoProgram, "tex" );
+        //const texLocation           = gl.getUniformLocation( this.geoProgram, "tex" );
 
+        // dof uniforms
 
+        this.sceneTextureLocation       = gl.getUniformLocation( this.dofProgram, "uSceneColor" );
+        this.dofPositionTextureLocation = gl.getUniformLocation( this.dofProgram, "uPositionColor" );
+        this.blurTextureLocation        = gl.getUniformLocation( this.dofProgram, "uBlurColor" );
         
-        this.sceneTextureLocation       = gl.getUniformLocation( this.compositeProgram, "uSceneColor" );
-        this.depthTextureLocation       = gl.getUniformLocation( this.compositeProgram, "uDepthColor" );
-        this.blurTextureLocation        = gl.getUniformLocation( this.compositeProgram, "uBlurredTexture" );
-        this.positionTextureLocation    = gl.getUniformLocation( this.compositeProgram, "uPositionTexture" );
-        this.normalTextureLocation      = gl.getUniformLocation( this.compositeProgram, "uNormalTexture" );
-        this.uvTextureLocation          = gl.getUniformLocation( this.compositeProgram, "uUvTexture" );
-        this.resolutionLocation         = gl.getUniformLocation( this.compositeProgram, "uResolution" );
+        // deferred uniforms
+
+        this.positionTextureLocation    = gl.getUniformLocation( this.deferredProgram, "uPositionTexture" );
+        this.normalTextureLocation      = gl.getUniformLocation( this.deferredProgram, "uNormalTexture" );
+        this.uvTextureLocation          = gl.getUniformLocation( this.deferredProgram, "uUvTexture" );
+        this.resolutionLocation         = gl.getUniformLocation( this.deferredProgram, "uResolution" );
+
 
 
         // --------------------------- Setup framebuffers ----------------------------- //
@@ -227,61 +308,8 @@ export default class StatueSceneDOF {
         gl.bindFramebuffer( gl.FRAMEBUFFER, this.sceneFBO );
         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.sceneTexture, 0 );
 
-        // Box blur for DOF
-
-    
-        this.blurTexture = gl.createTexture();
-        gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, gl.drawingBufferWidth, gl.drawingBufferHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null );
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
-
-        this.blurFBO = gl.createFramebuffer();
-        gl.bindFramebuffer( gl.FRAMEBUFFER, this.blurFBO );
-        gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.blurTexture, 0 );
-
-        gl.bindFramebuffer( gl.FRAMEBUFFER, null );
-        
-
-
-        // --------------------------- Setup GBuffer ----------------------------- //
-
-        this.gBuffer       = gl.createFramebuffer();
-        gl.bindFramebuffer( gl.FRAMEBUFFER, this.gBuffer );
-
-        gl.activeTexture( gl.TEXTURE2 );
-        this.positionTexture = gl.createTexture();
-        gl.bindTexture( gl.TEXTURE_2D, this.positionTexture );
-        gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
-        gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RGBA16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
-        gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.positionTexture, 0 );
-
-        gl.activeTexture( gl.TEXTURE3 );
-        this.normalTexture = gl.createTexture();
-        gl.bindTexture( gl.TEXTURE_2D, this.normalTexture );
-        gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
-        gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RGBA16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
-        gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.normalTexture, 0 );
-
-        gl.activeTexture( gl.TEXTURE4 );
-        this.uvTexture = gl.createTexture();
-        gl.bindTexture( gl.TEXTURE_2D, this.uvTexture );
-        gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
-        gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RG16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
-        gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, this.uvTexture, 0 );
+        // Box blur for DOF    
+       
 
         this.depthTexture = gl.createTexture();
         gl.bindTexture( gl.TEXTURE_2D, this.depthTexture );
@@ -293,20 +321,82 @@ export default class StatueSceneDOF {
         
         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.depthTexture, 0 );
 
-        gl.drawBuffers([
+        gl.bindFramebuffer( gl.FRAMEBUFFER, null );
 
-            gl.COLOR_ATTACHMENT0,
-            gl.COLOR_ATTACHMENT1,
-            gl.COLOR_ATTACHMENT2
+        this.blurTexture = gl.createTexture();
+        gl.bindTexture( gl.TEXTURE_2D, this.blurTexture );
+        gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, gl.drawingBufferWidth, gl.drawingBufferHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR );
+        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR );
+        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+        gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
 
-        ]);
+        this.blurFBO = gl.createFramebuffer();
+        gl.bindFramebuffer( gl.FRAMEBUFFER, this.blurFBO );
+        gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.blurTexture, 0 );
 
         gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+
+         // --------------------------- Setup GBuffer ----------------------------- //
+
+         this.gBuffer       = gl.createFramebuffer();
+         gl.bindFramebuffer( gl.FRAMEBUFFER, this.gBuffer );
+ 
+         this.positionTexture = gl.createTexture();
+         gl.bindTexture( gl.TEXTURE_2D, this.positionTexture );
+         gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
+         gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RGBA16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
+         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.positionTexture, 0 );
+ 
+         this.normalTexture = gl.createTexture();
+         gl.bindTexture( gl.TEXTURE_2D, this.normalTexture );
+         gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
+         gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RGBA16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
+         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.normalTexture, 0 );
+ 
+         this.uvTexture = gl.createTexture();
+         gl.bindTexture( gl.TEXTURE_2D, this.uvTexture );
+         gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
+         gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RGBA16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
+         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, this.uvTexture, 0 );
+
+         this.diffuseTexture = gl.createTexture();
+         gl.bindTexture( gl.TEXTURE_2D, this.diffuseTexture );
+         gl.pixelStorei( gl.UNPACK_FLIP_Y_WEBGL, false );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
+         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
+         gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE ); 
+         gl.texStorage2D( gl.TEXTURE_2D, 1, gl.RGBA16F, gl.drawingBufferWidth, gl.drawingBufferHeight );
+         gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.TEXTURE_2D, this.diffuseTexture, 0 );
+ 
+         gl.drawBuffers([
+ 
+             gl.COLOR_ATTACHMENT0,
+             gl.COLOR_ATTACHMENT1,
+             gl.COLOR_ATTACHMENT2,
+             gl.COLOR_ATTACHMENT3
+ 
+         ]);
+ 
+         gl.bindFramebuffer( gl.FRAMEBUFFER, null );
         
 
         // --------------------------- Setup Geometry --------------------------- //
 
-        this.numVertices    = statue.verts.length / 3;
+        this.numVertices    = character.verts.length / 3;
 
         // Statue
 
@@ -316,29 +406,27 @@ export default class StatueSceneDOF {
         
         const positionBuffer = gl.createBuffer();
         gl.bindBuffer( gl.ARRAY_BUFFER, positionBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( statue.verts ), gl.STATIC_DRAW );
+        gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( character.verts ), gl.STATIC_DRAW );
         gl.vertexAttribPointer( 0, 3, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( 0 );       
-        
+        gl.enableVertexAttribArray( 0 );        
         
         const uvBuffer = gl.createBuffer();
         gl.bindBuffer( gl.ARRAY_BUFFER, uvBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER,  new Float32Array( statue.texcoords ), gl.STATIC_DRAW );
+        gl.bufferData( gl.ARRAY_BUFFER,  new Float32Array( character.texcoords ), gl.STATIC_DRAW );
         gl.vertexAttribPointer( 1, 2, gl.FLOAT, false, 0, 0 );
         gl.enableVertexAttribArray( 1 );
 
         const normalBuffer = gl.createBuffer();
         gl.bindBuffer( gl.ARRAY_BUFFER, normalBuffer );
-        gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( statue.normals ), gl.STATIC_DRAW );
+        gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( character.normals ), gl.STATIC_DRAW );
         gl.vertexAttribPointer( 2, 3, gl.FLOAT, false, 0, 0 );
-        gl.enableVertexAttribArray( 2 );
-        
+        gl.enableVertexAttribArray( 2 );        
 
         this.indicesBuffer = gl.createBuffer();
         gl.bindBuffer( gl.ELEMENT_ARRAY_BUFFER, this.indicesBuffer );
-        gl.bufferData( gl.ELEMENT_ARRAY_BUFFER, new Uint16Array( statue.indices ), gl.STATIC_DRAW );
+        gl.bufferData( gl.ELEMENT_ARRAY_BUFFER, new Uint16Array( character.indices ), gl.STATIC_DRAW );
 
-        this.numOfStatueElements = statue.indices.length;
+        this.numOfStatueElements = character.indices.length;
         
 
         // Full Screen quad
@@ -369,7 +457,7 @@ export default class StatueSceneDOF {
         mat4.perspective( projMatrix, Math.PI / 2, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.01, 100. );
 
         const viewMatrix     = mat4.create();
-        const eyePosition    = vec3.fromValues( 1, 2.5, 4 );
+        const eyePosition    = vec3.fromValues( 1, 5.5, 7 );
 
         mat4.lookAt( viewMatrix, eyePosition, vec3.fromValues( 0, 2.0, 0 ), vec3.fromValues( 0, 1, 0 ) );
         
@@ -391,29 +479,41 @@ export default class StatueSceneDOF {
 
         gl.activeTexture( gl.TEXTURE0 );
         gl.bindTexture( gl.TEXTURE_2D, this.sceneTexture );
+
         gl.activeTexture( gl.TEXTURE1 );
-        gl.bindTexture( gl.TEXTURE_2D, this.depthTexture );
-        gl.activeTexture( gl.TEXTURE2 );
-        gl.bindTexture( gl.TEXTURE_2D, this.positionTexture );
-        gl.activeTexture( gl.TEXTURE3 );
-        gl.bindTexture( gl.TEXTURE_2D, this.normalTexture );
-        gl.activeTexture( gl.TEXTURE4 );
-        gl.bindTexture( gl.TEXTURE_2D, this.uvTexture );
-        gl.activeTexture( gl.TEXTURE5 );
         gl.bindTexture( gl.TEXTURE_2D, this.blurTexture );
 
-        gl.useProgram( this.compositeProgram );
-        gl.uniform2f( this.resolutionLocation, gl.drawingBufferWidth, gl.drawingBufferHeight );
-        
-        // Set composition program uniforms
+        gl.activeTexture( gl.TEXTURE2 );
+        gl.bindTexture( gl.TEXTURE_2D, this.positionTexture );
 
-        gl.uniform1i( this.sceneTextureLocation, 0 );
-        gl.uniform1i( this.depthTextureLocation, 1 );
-        gl.uniform1i( this.positionTextureLocation, 2 );        
-        gl.uniform1i( this.normalTextureLocation, 3 );
-        gl.uniform1i( this.uvTextureLocation, 4 );
+        gl.activeTexture( gl.TEXTURE3 );
+        gl.bindTexture( gl.TEXTURE_2D, this.normalTexture );
+
+        gl.activeTexture( gl.TEXTURE4 );
+        gl.bindTexture( gl.TEXTURE_2D, this.uvTexture );
+
+        // gl.activeTexture( gl.TEXTURE5 );
+        // gl.bindTexture( gl.TEXTURE_2D, this.diffuseTexture );
+
 
         requestAnimationFrame( this.draw.bind( this ) );
+
+    }
+
+    drawCharacter( gl ) {        
+
+        gl.useProgram( this.geoProgram );
+        gl.bindVertexArray( this.statueArray );
+
+        //this.rotation.angleY += 0.01;
+
+        mat4.fromXRotation( this.rotateXMatrix, this.rotation.angleX );
+        mat4.fromYRotation( this.rotateYMatrix, this.rotation.angleY );
+        mat4.multiply( this.modelMatrix, this.rotateXMatrix, this.rotateYMatrix );
+
+        gl.uniformMatrix4fv( this.modelMatrixLocation, false, this.modelMatrix );
+
+        gl.drawArrays( gl.TRIANGLES, 0, this.numVertices );
 
     }
 
@@ -435,64 +535,95 @@ export default class StatueSceneDOF {
 
             this.then = this.now - ( this.elapsed % this.fpsInterval );
 
-            {
-               
+            // Draw to G buffer
 
-                gl.bindFramebuffer( gl.FRAMEBUFFER, this.gBuffer );
+            {   
 
-                gl.useProgram( this.geoProgram );
-                gl.bindVertexArray( this.statueArray );
-
-                this.cubeRotation.angleY += 0.01;
-
-                mat4.fromXRotation( this.rotateXMatrix, this.cubeRotation.angleX );
-                mat4.fromYRotation( this.rotateYMatrix, this.cubeRotation.angleY );
-                mat4.multiply( this.modelMatrix, this.rotateXMatrix, this.rotateYMatrix );
-
-                gl.uniformMatrix4fv( this.modelMatrixLocation, false, this.modelMatrix );
+                gl.bindFramebuffer( gl.FRAMEBUFFER, this.gBuffer );               
+                
 
                 gl.viewport (0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
 
-                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clearColor( 0.0, 0.0, 0.0, 1.0);
                 gl.enable( gl.DEPTH_TEST );
 
                 // then before a draw
-                gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
-
-                gl.drawArrays( gl.TRIANGLES, 0, this.numVertices );
-
-            }
-
-            // Draw blur pass
-
-            {
-
+                gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT ); 
+                
+                this.drawCharacter( gl );
 
             }
 
-            // Draw composition
+            // Draw scene to buffer
+
+            {   
+
+                // gl.bindFramebuffer( gl.FRAMEBUFFER, this.sceneFBO );               
+                
+
+                // gl.viewport (0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
+
+                // gl.clearColor( 1.0, 1.0, 1.0, 1.0);
+                // gl.enable( gl.DEPTH_TEST );
+
+                // // then before a draw
+                // gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT ); 
+                
+                // this.drawCharacter( gl );
+
+            }            
+
+            // Draw blur scene
+
+            {   
+
+                // gl.bindFramebuffer( gl.FRAMEBUFFER, this.blurFBO );               
+
+                // // Draw quad
+
+                // gl.useProgram( this.boxBlurProgram );
+
+                // gl.bindVertexArray( this.quadArray );
+
+                // gl.viewport (0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
+
+                // gl.clearColor(0.0, 0.0, 1.0, 1.0);
+                // gl.enable( gl.DEPTH_TEST );
+
+                // // then before a draw
+                // gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+                // gl.drawArrays( gl.TRIANGLES, 0, 6 );
+
+            }
+            
+            
+
+            // Draw full screen quad
 
             {
 
-                gl.bindFramebuffer( gl.FRAMEBUFFER, null );           
+                // gl.bindFramebuffer( gl.FRAMEBUFFER, null );           
 
 
-                // Draw quad
+                // // Draw quad
 
-                gl.useProgram( this.compositeProgram );
+                // gl.useProgram( this.dofProgram );
 
-                gl.bindVertexArray( this.quadArray );
+                // gl.uniform1i( this.blurTextureLocation , 1 );
+                // gl.uniform1i( this.dofPositionTextureLocation, 2 );
 
-                gl.viewport (0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
+                // gl.bindVertexArray( this.quadArray );
 
-                gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                gl.enable( gl.DEPTH_TEST );
+                // gl.viewport (0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight );
 
-                // then before a draw
-                gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+                // gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                // gl.enable( gl.DEPTH_TEST );
 
-                gl.drawArrays( gl.TRIANGLES, 0, 6 );
+                // // then before a draw
+                // gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
+                // gl.drawArrays( gl.TRIANGLES, 0, 6 );
                
 
             }
